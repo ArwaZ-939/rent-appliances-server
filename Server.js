@@ -126,18 +126,28 @@ app.get("/getUsers", async (req, res) => {
 // api for insert new Appliance
 app.post("/inserAppliance", async (req, res) => {
     try {
+            console.log("/inserAppliance payload:", req.body);
+            const { name, imgUrl, price, dueDate, details, available } = req.body;
+
+            if (!name || name.trim() === "") {
+                return res.status(400).json({ message: "Name is required." });
+            }
+            if (!details || details.trim() === "") {
+                return res.status(400).json({ message: "Details are required." });
+            }
+
             const newAppliance = new ApplianceModel({
-                name: req.body.name,
-                price: req.body.price,
-                dueDate: req.body.dueDate,
-                details: req.body.details,
-                available: req.body.available,
+                name: name.trim(),
+                imgUrl: imgUrl || "",
+                price: String(price),
+                details: details.trim(),
+                available: Boolean(available),
             });
             await newAppliance.save();
             return res.status(201).json({ message: "Appliance added successfully." });
         } catch (error) {
-        console.error("Error saving user:", error);
-        return res.status(500).json({ message: "Internal server error." });
+        console.error("Error saving appliance:", error);
+        return res.status(500).json({ message: error?.message || "Internal server error." });
     }
 });
 
@@ -326,5 +336,5 @@ app.get("/getUserProfile/:username", async (req, res) => {
 });
 
 app.listen(5000,()=>{
-    console.log("Server running on port 3000");
+    console.log("Server running on port 5000");
 })

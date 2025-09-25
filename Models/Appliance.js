@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const ApplianceSchema = new mongoose.Schema({
     name: { type: String, required: true },
     imgUrl: { type: String, default: "" },
-    price: { type: Number, required: true },
+    price: { type: String, required: true },
     details: { type: String, required: true },
     available: { type: Boolean, default: false } 
 });
