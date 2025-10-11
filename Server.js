@@ -6,6 +6,10 @@ import ApplianceModel from "./Models/Appliance.js";
 import bcrypt from 'bcrypt';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import Appliance from './Models/Appliance.js';
+
+
+
 
 let app = express();
 app.use(cors());
@@ -15,6 +19,39 @@ mongoose.connect(MongConnect,{
     //useNewUrlParser: true,
     //useUnifiedTopology:true
 });
+
+
+//Search by Keyword
+app.get('/api/suggestions', async (req, res) => {
+  const { keyword } = req.query;
+
+  if (!keyword) {
+    return res.status(400).json({ error: 'Keyword is required' });
+  }
+
+  try {
+    const suggestions = await Appliance.find({
+      name: { $regex: `^${keyword}`, $options: 'i' } // starts with keyword
+    }).limit(5); // limit suggestions
+
+    const names = suggestions.map(item => item.name); // return only names
+
+    res.json(names);
+  } catch (error) {
+    console.error('Error fetching suggestions:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+
+
+
+
+
+
+
+
 
 // Nodemailer transporter setup
 const transporter = nodemailer.createTransport({
@@ -114,8 +151,11 @@ app.put('/updateUser/:user', async (req, res) => {
 // api for get Users details
 app.get("/getUsers", async (req, res) => {
     try {
-        // Fetch users where isAdmin is false
-        const users = await UserModel.find({ isAdmin: false });
+        console.log("Fetching all users...");
+        // Fetch ALL users (including admins)
+        const users = await UserModel.find({});
+        console.log("Found users:", users.length);
+        console.log("Users:", users.map(u => ({ id: u._id, user: u.user, email: u.email, isAdmin: u.isAdmin })));
         return res.status(200).json(users);
     } catch (error) {
         console.error("Error fetching users:", error);
@@ -126,28 +166,23 @@ app.get("/getUsers", async (req, res) => {
 // api for insert new Appliance
 app.post("/inserAppliance", async (req, res) => {
     try {
-            console.log("/inserAppliance payload:", req.body);
-            const { name, imgUrl, price, dueDate, details, available } = req.body;
-
-            if (!name || name.trim() === "") {
-                return res.status(400).json({ message: "Name is required." });
-            }
-            if (!details || details.trim() === "") {
-                return res.status(400).json({ message: "Details are required." });
-            }
-
-            const newAppliance = new ApplianceModel({
-                name: name.trim(),
-                imgUrl: imgUrl || "",
-                price: String(price),
-                details: details.trim(),
-                available: Boolean(available),
-            });
-            await newAppliance.save();
-            return res.status(201).json({ message: "Appliance added successfully." });
-        } catch (error) {
+        console.log("Received request body:", req.body);
+        
+        const newAppliance = new ApplianceModel({
+            name: req.body.name,
+            imgUrl: req.body.imgUrl || "",
+            price: parseFloat(req.body.price) || 0,
+            details: req.body.details,
+            available: req.body.available,
+        });
+        
+        console.log("Creating appliance:", newAppliance);
+        await newAppliance.save();
+        console.log("Appliance saved successfully");
+        return res.status(201).json({ message: "Appliance added successfully." });
+    } catch (error) {
         console.error("Error saving appliance:", error);
-        return res.status(500).json({ message: error?.message || "Internal server error." });
+        return res.status(500).json({ message: "Internal server error.", error: error.message });
     }
 });
 
@@ -180,17 +215,105 @@ app.get("/getSpecificAppliance", async (req, res) => {
     }
 });
 
-// api for delete any User
-app.delete('/deleteUser/:user', async (req, res) => {
+// Test endpoint to check if delete route is working
+app.delete('/test-delete', (req, res) => {
+    console.log("=== TEST DELETE ROUTE HIT ===");
+    res.json({ message: 'Delete route working' });
+});
+
+// Test endpoint to check database connection
+app.get('/test-db', async (req, res) => {
     try {
-      const { user } = req.params; 
-      // Find and delete the user
-      const deletedUser = await UserModel.findOneAndDelete({ user });
-      if (!deletedUser) {
+        console.log("=== TESTING DATABASE CONNECTION ===");
+        const userCount = await UserModel.countDocuments();
+        console.log("Database connected. Total users:", userCount);
+        res.json({ 
+            message: 'Database connected', 
+            userCount: userCount,
+            connection: mongoose.connection.readyState 
+        });
+    } catch (error) {
+        console.error("Database connection error:", error);
+        res.status(500).json({ message: 'Database error', error: error.message });
+    }
+});
+
+// Test endpoint to manually delete a user (for debugging)
+app.delete('/test-delete-user/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        console.log("=== MANUAL DELETE TEST ===");
+        console.log("Attempting to delete user with ID:", id);
+        
+        const user = await UserModel.findById(id);
+        console.log("User found:", user);
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        const result = await UserModel.findByIdAndDelete(id);
+        console.log("Delete result:", result);
+        
+        // Verify deletion
+        const verify = await UserModel.findById(id);
+        console.log("User still exists after deletion:", verify);
+        
+        res.json({ 
+            message: 'User deleted manually', 
+            deletedUser: result,
+            stillExists: !!verify
+        });
+    } catch (error) {
+        console.error("Manual delete error:", error);
+        res.status(500).json({ message: 'Manual delete error', error: error.message });
+    }
+});
+
+// api for delete any User
+app.delete('/deleteUser/:id', async (req, res) => {
+    console.log("=== DELETE USER ROUTE HIT ===");
+    console.log("Route params:", req.params);
+    console.log("Full URL:", req.url);
+    console.log("Method:", req.method);
+    
+    try {
+      const { id } = req.params; 
+      console.log("=== DELETE USER REQUEST ===");
+      console.log("Deleting user with ID:", id);
+      console.log("Request body:", req.body);
+      console.log("Request headers:", req.headers);
+      
+      // First check if user exists
+      const existingUser = await UserModel.findById(id);
+      console.log("Existing user found:", existingUser);
+      
+      if (!existingUser) {
+        console.log("User not found with ID:", id);
         return res.status(404).json({ message: 'User not found' });
       }
-      res.status(200).json({ message: 'User deleted successfully', deletedUser });
+      
+      // Delete the user
+      const deletedUser = await UserModel.findByIdAndDelete(id);
+      console.log("User deleted successfully:", deletedUser);
+      
+      // Verify deletion by trying to find the user again
+      const verifyDeletion = await UserModel.findById(id);
+      console.log("Verification - user still exists:", verifyDeletion);
+      
+      res.status(200).json({ 
+        message: 'User deleted successfully', 
+        deletedUser: {
+          id: deletedUser._id,
+          username: deletedUser.user,
+          email: deletedUser.email
+        }
+      });
     } catch (error) {
+      console.error("=== ERROR DELETING USER ===");
+      console.error("Error details:", error);
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
       res.status(500).json({ message: 'Error deleting user', error: error.message });
     }
   });
@@ -210,28 +333,52 @@ app.delete('/appliances/:id', async (req, res) => {
     }
 });
 
+// Test route to check if server is receiving PUT requests
+app.put('/test-update', (req, res) => {
+    console.log("=== TEST UPDATE ROUTE HIT ===");
+    res.json({ message: 'Test route working' });
+});
+
 // api for update any appliance
-app.put('updateAppliance/:id', async (req, res) => {
+app.put('/updateAppliance/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, price, dueDate, details, available } = req.body;
+        const { name, imgUrl, price, details, available } = req.body;
 
-        // Find the appliance by ID and user
-        const appliance = await ApplianceModel.findOne({ _id: id, user });
+        console.log("=== UPDATE APPLIANCE REQUEST ===");
+        console.log("Appliance ID:", id);
+        console.log("Request body:", req.body);
+        console.log("Request headers:", req.headers);
+
+        // First, let's check if we can find ANY appliances
+        const allAppliances = await ApplianceModel.find({});
+        console.log("All appliances in database:", allAppliances.map(app => ({ id: app._id, name: app.name })));
+
+        // Find the appliance by ID
+        const appliance = await ApplianceModel.findById(id);
+        console.log("Found appliance:", appliance);
 
         if (!appliance) {
-            return res.status(404).json({ message: 'Appliance not found for the specified user.' });
+            console.log("Appliance not found with ID:", id);
+            return res.status(404).json({ message: 'Appliance not found.' });
         }
 
         // Update appliance details
-        appliance.price = price || appliance.price;
-        appliance.dueDate = dueDate || appliance.dueDate;
-        appliance.details = details || appliance.details;
-        appliance.available = completed !== undefined ? available : appliance.available;
+        if (name) appliance.name = name;
+        if (imgUrl !== undefined) appliance.imgUrl = imgUrl;
+        if (price) appliance.price = parseFloat(price);
+        if (details) appliance.details = details;
+        if (available !== undefined) appliance.available = available;
 
+        console.log("Updated appliance before save:", appliance);
         const updatedAppliance = await appliance.save();
+        console.log("Appliance updated successfully:", updatedAppliance);
         res.status(200).json({ message: 'Appliance updated successfully', appliance: updatedAppliance });
     } catch (error) {
+        console.error("=== ERROR UPDATING APPLIANCE ===");
+        console.error("Error details:", error);
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
         res.status(500).json({ message: 'Error updating appliance', error: error.message });
     }
 });
