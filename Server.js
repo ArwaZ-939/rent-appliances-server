@@ -122,31 +122,141 @@ app.post("/getUser", async (req, res) => {
 app.put('/updateUser/:user', async (req, res) => {
     try {
         const { user } = req.params;
-        const { password, imgUrl, gender } = req.body;
+        const { password, imgUrl, gender, newUsername, email } = req.body;
+
+        console.log("=== UPDATE USER REQUEST ===");
+        console.log("Current username:", user);
+        console.log("Request body:", req.body);
 
         const existingUser = await UserModel.findOne({ user });
         if (!existingUser) {
+            console.log("User not found:", user);
             return res.status(404).json({ message: 'User not found.' });
         }
-        // Update only the allowed fields
+
+        console.log("Found existing user:", {
+            id: existingUser._id,
+            username: existingUser.user,
+            email: existingUser.email,
+            gender: existingUser.gender
+        });
+
+        // Check for username uniqueness if newUsername is provided
+        if (newUsername && newUsername !== user) {
+            const usernameExists = await UserModel.findOne({ user: newUsername.toLowerCase() });
+            if (usernameExists) {
+                console.log("Username already exists:", newUsername);
+                return res.status(400).json({ message: 'Username already exists.' });
+            }
+        }
+
+        // Check for email uniqueness if email is provided
+        if (email && email !== existingUser.email) {
+            const emailExists = await UserModel.findOne({ email: email });
+            if (emailExists) {
+                console.log("Email already exists:", email);
+                return res.status(400).json({ message: 'Email already exists.' });
+            }
+        }
+
+        // Track what fields are being updated
+        const updates = {};
+
+        // Update allowed fields
         if (password) {
-            existingUser.password = await bcrypt.hash(password, 10); 
+            existingUser.password = await bcrypt.hash(password, 10);
+            updates.password = "***HASHED***";
         }
         if (imgUrl) {
             existingUser.imgUrl = imgUrl;
+            updates.imgUrl = imgUrl;
         }
         if (gender) {
             existingUser.gender = gender;
+            updates.gender = gender;
+        }
+        if (newUsername && newUsername !== user) {
+            existingUser.user = newUsername.toLowerCase();
+            updates.user = newUsername.toLowerCase();
+        }
+        if (email && email !== existingUser.email) {
+            existingUser.email = email;
+            updates.email = email;
         }
 
+        console.log("Fields to be updated:", updates);
+
+        // Save the updated user to database
         const updatedUser = await existingUser.save();
-        res.status(200).json({ message: 'User updated successfully.', user: updatedUser });
+        
+        console.log("User updated successfully in database:", {
+            id: updatedUser._id,
+            username: updatedUser.user,
+            email: updatedUser.email,
+            gender: updatedUser.gender
+        });
+
+        res.status(200).json({ 
+            message: 'User updated successfully.', 
+            user: {
+                id: updatedUser._id,
+                user: updatedUser.user,
+                email: updatedUser.email,
+                gender: updatedUser.gender,
+                imgUrl: updatedUser.imgUrl,
+                isAdmin: updatedUser.isAdmin
+            }
+        });
     } catch (error) {
-        console.error('Error updating user:', error);
+        console.error("=== ERROR UPDATING USER ===");
+        console.error("Error details:", error);
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
         res.status(500).json({ message: 'Internal server error.', error: error.message });
     }
 });
 
+// api to verify user update in database
+app.get('/verifyUserUpdate/:username', async (req, res) => {
+    try {
+        const { username } = req.params;
+        console.log("=== VERIFYING USER UPDATE ===");
+        console.log("Checking username:", username);
+
+        const user = await UserModel.findOne({ user: username.toLowerCase() });
+        if (!user) {
+            console.log("User not found for verification:", username);
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        console.log("User found in database:", {
+            id: user._id,
+            username: user.user,
+            email: user.email,
+            gender: user.gender,
+            imgUrl: user.imgUrl,
+            isAdmin: user.isAdmin,
+            updatedAt: user.updatedAt
+        });
+
+        res.status(200).json({
+            message: 'User verification successful',
+            user: {
+                id: user._id,
+                user: user.user,
+                email: user.email,
+                gender: user.gender,
+                imgUrl: user.imgUrl,
+                isAdmin: user.isAdmin,
+                updatedAt: user.updatedAt
+            }
+        });
+    } catch (error) {
+        console.error("=== ERROR VERIFYING USER ===");
+        console.error("Error details:", error);
+        res.status(500).json({ message: 'Internal server error.', error: error.message });
+    }
+});
 
 // api for get Users details
 app.get("/getUsers", async (req, res) => {
