@@ -45,14 +45,6 @@ app.get('/api/suggestions', async (req, res) => {
 
 
 
-
-
-
-
-
-
-
-
 // Nodemailer transporter setup
 const transporter = nodemailer.createTransport({
     service: 'gmail',
